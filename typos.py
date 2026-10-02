@@ -33,9 +33,10 @@ adjacent_keys = {
 
 
 class Typos:
-    def __init__(self, keyboardController: Controller, delayController: Delay):
+    def __init__(self, keyboardController: Controller, delayController: Delay, logger):
         self.keyboardController = keyboardController
         self.delayController = delayController
+        self.logger = logger
 
     def random(self, current_key: str):
         function_list = [self.substitute_adjacent_keys, self.key_repeat]
@@ -44,6 +45,7 @@ class Typos:
 
 
     def substitute_adjacent_keys(self, current_key: str):
+        self.logger.log("TYPO: Substitution by adjacent keys")
         new_key = np.random.choice(list(adjacent_keys[current_key.lower()]))
         if current_key.isupper():
             new_key = new_key.upper()
@@ -59,6 +61,7 @@ class Typos:
         self.delayController.wait()
 
     def key_repeat(self, current_key: str):
+        self.logger.log("TYPO: Key repeats")
         num_of_repeats = np.random.geometric(0.8) + 1
         for _ in range(num_of_repeats):
             self.keyboardController.press(current_key)
@@ -73,6 +76,7 @@ class Typos:
             self.delayController.backspace()
 
     def capitalization_error(self, current_word: str):
+        self.logger.log("TYPO: Capitalization error")
         len_before_detect = min(np.random.poisson(3), len(current_word))
 
         for i in range(len_before_detect):

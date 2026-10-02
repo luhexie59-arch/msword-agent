@@ -4,6 +4,7 @@ from pathlib import Path
 from typos import Typos
 from delays import Delay
 from mouse import RealisticMouse
+from logger import Logger
 import numpy as np
 from numpy.random import uniform as rand
 import time
@@ -13,6 +14,7 @@ import psutil
 import win32con, win32gui
 import base64
 
+logger = Logger()
 
 def getargs():
     parser = argparse.ArgumentParser(
@@ -39,7 +41,7 @@ def getargs():
     return args.filename, args.output, args.close_word
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-SPOOFING_LOCATION = SCRIPT_DIR / "createWithFakePPID.exe"
+SPOOFING_LOCATION = SCRIPT_DIR / "startProcess.exe"
 
 def getExplorerPID():
     explorer_pids = [
@@ -55,7 +57,7 @@ def openDocument(filename: str):
     filename = filename.lstrip(".\\")
     docxfile = Path(filename)
     if not docxfile.exists():
-        print(f"{filename} does not exist. Creating a new one...")
+        logger.log(f"{filename} does not exist. Creating a new one...")
         docxfile.touch()
 
     explorer_pid = getExplorerPID()
@@ -74,6 +76,7 @@ def openDocument(filename: str):
         str(explorer_pid),
         str(docxfile.absolute())
     ]
+    logger.log("Starting MSWord with obfuscated PPID")
     subprocess.run(" ".join(command), timeout=5)
     time.sleep(3)
 
@@ -81,33 +84,36 @@ def openDocument(filename: str):
 
     is_foreground = lambda hwnd: win32gui.GetForegroundWindow() == hwnd
     if hwnd:
-        print("found")
+        logger.log("Forcing Word to run at foreground")
         win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
-        for _ in range(10):
-            time.sleep(0.2)
+        for _ in range(20):
+            time.sleep(0.5)
             win32gui.SetForegroundWindow(hwnd)
             if is_foreground(hwnd):
+                logger.log("Succeeded")
                 break
         else:
             raise "cannot put foreground"
 
 
 def writeDocument(text: str):
+    logger.log("Initializing document writers")
     keyboardController = Controller()
-    delayController = Delay()
+    delayController = Delay(logger)
     mouseController = RealisticMouse()
-    typoController = Typos(keyboardController, delayController)
+    typoController = Typos(keyboardController, delayController, logger)
     next_scroll = np.random.exponential(90)
     last_scroll = time.time()
 
     # zoom in
     time.sleep(0.5)
+    logger.log("Zooming in")
     with keyboardController.pressed(Key.ctrl):
         mouseController.real_scroll(3)
     time.sleep(1)
 
     for index, c in enumerate(text):
-        thres = 0.1 if delayController.status != 2 else 0.2
+        thres = 0.06 if delayController.status != 2 else 0.13
 
         # Typo
         if c == "\n":
@@ -130,23 +136,29 @@ def writeDocument(text: str):
         elif c == " " and rand() < 0.2:
             delayController.thinking()
         elif c == "\n":
-            delayController.thinking()
+            delayController.enter()
         elif c == ",":
             delayController.comma()
         else:
-            if delayController.status == 1:
-                if rand() < 0.2: # fast mode
-                    keepStatusFor = np.random.randint(8, 15)
-                    delayController.setStatus(2, keepStatusFor)
-                elif rand() < 0.1: # slow mode
-                    keepStatusFor = np.random.randint(2, 5)
-                    delayController.setStatus(3, keepStatusFor)
+            if rand() < 0.03:
+                delayController.thinking()
+            else:
+                if delayController.status == 1:
+                    if rand() < 0.2: # fast mode
+                        logger.log("Entering fast mode")
+                        keepStatusFor = np.random.randint(8, 30)
+                        delayController.setStatus(2, keepStatusFor)
+                    elif rand() < 0.1: # slow mode
+                        logger.log("Entering slow mode")
+                        keepStatusFor = np.random.randint(5, 15)
+                        delayController.setStatus(3, keepStatusFor)
 
-            delayController.next()
-            delayController.wait()
+                delayController.next()
+                delayController.wait()
 
         # scrolling
         if time.time() > last_scroll + next_scroll:
+            logger.log("Scrolling")
             mouseController.real_scroll(-2)
             mouseController.real_scroll(1)
             last_scroll = time.time()
@@ -156,13 +168,16 @@ def writeDocument(text: str):
     with keyboardController.pressed(Key.ctrl):
         keyboardController.press("s")
         keyboardController.release("s")
+    logger.log("Saved Word document")
 
     time.sleep(0.5)
+    logger.log("Zooming out to original scale")
     with keyboardController.pressed(Key.ctrl):
         mouseController.real_scroll(-3)
     time.sleep(1)
 
 def main():
+    logger.log("Program started")
     filename, output, close_word = getargs()
     if not filename.endswith(".txt"):
         raise ValueError("Provide a txt file as source")
@@ -178,7 +193,8 @@ def main():
     writeDocument(content)
 
     if close_word:
-        time.sleep(3)
+        time.sleep(1)
+        logger.log("Closing Word window")
         mouse = RealisticMouse()
         mouse.real_move(1600, 33)
         mouse.click(Button.left)
