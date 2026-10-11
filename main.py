@@ -11,7 +11,7 @@ import time
 import subprocess
 import argparse
 import psutil
-import win32con, win32gui
+import win32con, win32gui, win32api
 import base64
 
 logger = Logger()
@@ -196,7 +196,8 @@ def main():
         time.sleep(1)
         logger.log("Closing Word window")
         mouse = RealisticMouse()
-        mouse.real_move(1600, 33)
+        screen_width = win32api.GetSystemMetrics(0)
+        mouse.real_move(screen_width - 20, 20)
         mouse.click(Button.left)
 
 if __name__ == "__main__":
